@@ -32,6 +32,11 @@ type ServerInfo struct {
 	Database string
 }
 
+type TableStats struct {
+	Rows      uint64
+	DiskBytes uint64
+}
+
 type QueryResult struct {
 	Columns     []string
 	ColumnTypes []string // ClickHouse database type names, parallel to Columns
@@ -89,6 +94,55 @@ func formatUptime(seconds uint64) string {
 		return fmt.Sprintf("%dh %dm", h, m)
 	}
 	return fmt.Sprintf("%dm", m)
+}
+
+func (c *Client) Databases(ctx context.Context) ([]string, error) {
+	rows, err := c.conn.Query(ctx, "SHOW DATABASES")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var dbs []string
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, err
+		}
+		dbs = append(dbs, name)
+	}
+	return dbs, rows.Err()
+}
+
+func (c *Client) SwitchDatabase(name string) {
+	c.database = name
+}
+
+func (c *Client) Database() string {
+	return c.database
+}
+
+func (c *Client) TableStatsBatch(ctx context.Context) (map[string]TableStats, error) {
+	rows, err := c.conn.Query(ctx,
+		"SELECT name, coalesce(total_rows, 0), coalesce(total_bytes, 0) FROM system.tables WHERE database = @db",
+		clickhouse.Named("db", c.database))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	stats := make(map[string]TableStats)
+	for rows.Next() {
+		var name string
+		var totalRows, totalBytes uint64
+		if err := rows.Scan(&name, &totalRows, &totalBytes); err != nil {
+			continue
+		}
+		stats[name] = TableStats{Rows: totalRows, DiskBytes: totalBytes}
+	}
+	return stats, rows.Err()
+}
+
+func (c *Client) DescribeTable(ctx context.Context, table string) (*QueryResult, error) {
+	return c.Query(ctx, "DESCRIBE TABLE "+table)
 }
 
 func (c *Client) Tables(ctx context.Context) ([]string, error) {
