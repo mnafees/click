@@ -22,7 +22,8 @@ const (
 )
 
 type model struct {
-	client *db.Client
+	client     *db.Client
+	serverInfo db.ServerInfo
 
 	// state
 	activeView view
@@ -73,7 +74,7 @@ func runQuery(client *db.Client, query string) tea.Cmd {
 	}
 }
 
-func newModel(client *db.Client) model {
+func newModel(client *db.Client, info db.ServerInfo) model {
 	ta := textarea.New()
 	ta.Placeholder = "SELECT * FROM ..."
 	ta.ShowLineNumbers = false
@@ -90,9 +91,10 @@ func newModel(client *db.Client) model {
 	vp := viewport.New(80, 10)
 
 	return model{
-		client:   client,
-		editor:   ta,
-		viewport: vp,
+		client:     client,
+		serverInfo: info,
+		editor:     ta,
+		viewport:   vp,
 	}
 }
 
@@ -265,7 +267,11 @@ func (m model) View() string {
 		return "loading..."
 	}
 
-	title := TitleStyle.Render(" click ")
+	title := TitleStyle.Render(" click ") + "  " +
+		DimStyle.Render(fmt.Sprintf("ClickHouse %s | %s:%d/%s | up %s",
+			m.serverInfo.Version,
+			m.serverInfo.Host, m.serverInfo.Port, m.serverInfo.Database,
+			m.serverInfo.Uptime))
 	expandedHint := "off"
 	if m.expanded {
 		expandedHint = "on"
@@ -312,7 +318,8 @@ func (m model) View() string {
 	}
 
 	if m.result != nil {
-		timing := StatusStyle.Render(fmt.Sprintf("%d rows in %s", len(m.result.Rows), m.result.Duration))
+		timing := StatusStyle.Render(fmt.Sprintf("%d rows (%s) in %s",
+			len(m.result.Rows), formatBytes(m.result.BytesRead), m.result.Duration))
 		rightParts = append(rightParts, timing)
 
 		// sticky header (only in table mode, not expanded)
@@ -526,8 +533,25 @@ func pad(s string, width int) string {
 	return s + strings.Repeat(" ", width-len(s))
 }
 
+func formatBytes(b uint64) string {
+	switch {
+	case b >= 1<<30:
+		return fmt.Sprintf("%.1f GB", float64(b)/float64(1<<30))
+	case b >= 1<<20:
+		return fmt.Sprintf("%.1f MB", float64(b)/float64(1<<20))
+	case b >= 1<<10:
+		return fmt.Sprintf("%.1f KB", float64(b)/float64(1<<10))
+	default:
+		return fmt.Sprintf("%d B", b)
+	}
+}
+
 func Run(client *db.Client) error {
-	p := tea.NewProgram(newModel(client), tea.WithAltScreen())
-	_, err := p.Run()
+	info, err := client.ServerInfo(context.Background())
+	if err != nil {
+		return fmt.Errorf("server info: %w", err)
+	}
+	p := tea.NewProgram(newModel(client, info), tea.WithAltScreen())
+	_, err = p.Run()
 	return err
 }

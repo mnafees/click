@@ -1,6 +1,8 @@
 # click
 
-A TUI for ClickHouse databases. Built with [Bubble Tea](https://github.com/charmbracelet/bubbletea) and [Lip Gloss](https://github.com/charmbracelet/lipgloss).
+A TUI for ClickHouse. Connects over the native protocol, shows server info at a glance, and lets you browse tables and run queries without leaving the terminal.
+
+Built with [Bubble Tea](https://github.com/charmbracelet/bubbletea) and [Lip Gloss](https://github.com/charmbracelet/lipgloss).
 
 ## Install
 
@@ -14,7 +16,7 @@ go install github.com/mnafees/click@latest
 click --host localhost --port 9000 --user default --password secret --database mydb
 ```
 
-All flags are optional and default to `localhost:9000` with user `default` and database `default`.
+All flags are optional. Defaults to `localhost:9000`, user `default`, database `default`.
 
 ## Keybindings
 
@@ -30,16 +32,16 @@ All flags are optional and default to `localhost:9000` with user `default` and d
 | `q` | Quit (outside the query editor) |
 | `ctrl+c` | Quit |
 
-## What it does
+## Features
 
-- Connects to ClickHouse over the native protocol
-- Lists tables in the sidebar; select one to browse its contents
-- Query editor with freeform SQL, results shown with column types in the header
+- Server info bar showing ClickHouse version, connection endpoint, and uptime
+- Table browser in the sidebar -- select a table to preview its contents
+- Freeform SQL editor with results displayed alongside column types
 - Sticky column headers that stay visible while scrolling
-- Horizontal and vertical scrolling for wide/long result sets
-- Expanded record view for inspecting individual rows
-- Datetime timezone toggle (local/UTC)
-- Query timing displayed with row count
+- Horizontal and vertical scrolling for wide or long result sets
+- Expanded record view for inspecting rows one at a time
+- Datetime timezone toggle between local time and UTC
+- Query stats: row count, data size, and elapsed time
 
 ## License
 

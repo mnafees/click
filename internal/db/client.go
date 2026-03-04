@@ -20,13 +20,23 @@ type Config struct {
 
 type Client struct {
 	conn     driver.Conn
+	cfg      Config
 	database string
+}
+
+type ServerInfo struct {
+	Version  string
+	Uptime   string
+	Host     string
+	Port     int
+	Database string
 }
 
 type QueryResult struct {
 	Columns     []string
 	ColumnTypes []string // ClickHouse database type names, parallel to Columns
 	Rows        [][]string
+	BytesRead   uint64
 	Duration    time.Duration
 }
 
@@ -45,11 +55,40 @@ func Connect(ctx context.Context, cfg Config) (*Client, error) {
 	if err := conn.Ping(ctx); err != nil {
 		return nil, fmt.Errorf("ping: %w", err)
 	}
-	return &Client{conn: conn, database: cfg.Database}, nil
+	return &Client{conn: conn, cfg: cfg, database: cfg.Database}, nil
 }
 
 func (c *Client) Close() error {
 	return c.conn.Close()
+}
+
+func (c *Client) ServerInfo(ctx context.Context) (ServerInfo, error) {
+	var version string
+	var uptime uint32
+	row := c.conn.QueryRow(ctx, "SELECT version() AS version, uptime() AS uptime")
+	if err := row.Scan(&version, &uptime); err != nil {
+		return ServerInfo{}, err
+	}
+	return ServerInfo{
+		Version:  version,
+		Uptime:   formatUptime(uint64(uptime)),
+		Host:     c.cfg.Host,
+		Port:     c.cfg.Port,
+		Database: c.database,
+	}, nil
+}
+
+func formatUptime(seconds uint64) string {
+	d := seconds / 86400
+	h := (seconds % 86400) / 3600
+	m := (seconds % 3600) / 60
+	if d > 0 {
+		return fmt.Sprintf("%dd %dh %dm", d, h, m)
+	}
+	if h > 0 {
+		return fmt.Sprintf("%dh %dm", h, m)
+	}
+	return fmt.Sprintf("%dm", m)
 }
 
 func (c *Client) Tables(ctx context.Context) ([]string, error) {
@@ -109,10 +148,18 @@ func (c *Client) Query(ctx context.Context, query string) (*QueryResult, error) 
 		resultRows = append(resultRows, row)
 	}
 
+	var bytesRead uint64
+	for _, row := range resultRows {
+		for _, cell := range row {
+			bytesRead += uint64(len(cell))
+		}
+	}
+
 	return &QueryResult{
 		Columns:     columns,
 		ColumnTypes: columnTypes,
 		Rows:        resultRows,
+		BytesRead:   bytesRead,
 		Duration:    time.Since(start),
 	}, rows.Err()
 }
